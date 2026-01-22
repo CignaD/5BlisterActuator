@@ -1,0 +1,134 @@
+#include <math.h>
+
+// query the current position
+void cmdPos()
+{
+  int channel;
+  int32_t pos;
+  char *arg1; 
+
+
+  arg1 = SCmd.next();    
+  if (arg1 != NULL) //if not a USB command, then check RS485
+  {
+    channel = atoi(arg1);
+	pos = actuator[channel].getPosition();
+	pos *= 12.7 / Microsteps;
+	Serial.println(pos);
+  }  
+	else
+	{
+		Serial.println(-1);
+	}
+}
+
+
+void cmdMicrostep()
+{
+  char *arg1;
+
+  arg1 = SCmd.next();    
+  if (arg1 != NULL) 
+  {
+		Microsteps = atoi(arg1);
+		EEPROMWriteInt(MicrostepsAddr, Microsteps);
+  }  
+	Serial.println(Microsteps);
+}
+
+void cmdStop()
+{
+	controller.stop();
+}
+
+// cmdStep takes three arguments (long motor [0-4], float speed [um/s], float distance[um])
+void cmdMove()
+{
+  char *arg1, *arg2, *arg3; 
+  long motor;
+  float speed; //um/s
+  float distance;		//um
+	
+  arg1 = SCmd.next();    // motor #
+  arg2 = SCmd.next(); 	 // speed (um/s)
+  arg3 = SCmd.next();    // relative distance (um)
+  
+	// echo the command to the user
+	Serial.print("move ");
+	Serial.print(arg1);Serial.print(" ");
+	Serial.print(arg2);Serial.print(" ");
+	Serial.println(arg3);
+	
+	if (arg3 == NULL) 
+  {
+      Serial.println("Usage: move <motor #> <speed (um/s)> <linear distance (um)>");
+  }
+  else
+  {
+    motor = atoi(arg1) - 1;
+    speed = atof(arg2);
+    distance = atof(arg3);
+		
+
+				
+		if(motor >= 0 && motor <= 4)
+		{
+			// um/step = (inch / step) * (um / inch)
+			float umPerStep = .0005 *  25400; // = 12.7 um/step
+			int32_t steps = (int32_t) round(distance / umPerStep);
+			int32_t steprate = (int32_t)round(speed / umPerStep);
+				
+			actuator[motor].setMaxSpeed(steprate);
+			actuator[motor].setTargetRel(steps);
+			controller.moveAsync(actuator[motor]);
+			
+			if(0)
+			{
+				Serial.print("motor "); Serial.println(motor);
+				Serial.print("speed "); Serial.println(speed);
+				Serial.print("distance "); Serial.println(distance);
+				Serial.print("steps "); Serial.println(steps);
+				Serial.print("steprate "); Serial.println(steprate);
+			}
+		}
+  }
+  
+}
+
+void cmdHome()
+{
+		long motor;
+		char *arg1;
+		
+		arg1 = SCmd.next(); 
+		
+		// echo the command to the user
+		Serial.print("home "); Serial.println(arg1);
+		
+		if(arg1 == NULL)
+		{
+			Serial.println("Usage home <motor (0-4)");
+		}
+		
+		motor = atoi(arg1) - 1;
+		
+		if(motor >= 0 && motor <= 4)
+		{
+			actuator[motor].setMaxSpeed(1000);
+			actuator[motor].setTargetRel(-1025);
+			controller.moveAsync(actuator[motor]);
+			actuator[motor].setPosition(0);
+		}
+		
+}
+
+// This gets set as the default handler, and gets called when no other command matches. 
+void unrecognized()
+{
+  Serial.println("Invalid Command Bud!"); 
+	Serial.println( SCmd.next()); 
+	Serial.println( SCmd.next());
+	Serial.println( SCmd.next());	
+	Serial.println( SCmd.next());
+ 
+}
